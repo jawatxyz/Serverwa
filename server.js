@@ -1,3 +1,10 @@
+// server.js
+import dotenv from 'dotenv'
+dotenv.config()
+import express from 'express'
+import { config } from './config.js'
+import { redisAuth } from './auth.js'
+import router from './routes.js'
 import express from 'express'
 import fs from 'fs'
 import { WebSocketServer } from 'ws'
