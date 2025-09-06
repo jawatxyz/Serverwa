@@ -1,0 +1,17 @@
+{
+  "name": "wa-session-server",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "^6.7.19",
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "pino": "^9.3.2",
+    "uuid": "^9.0.1",
+    "ws": "^8.18.0",
+    "dotenv": "^16.4.5"
+  }
+}
