@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    container_name: wa-server
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - API_KEY=changeme
+      - REDIS_URL=redis://redis:6379
+      - MEDIA_DIR=/app/media
+    volumes:
+      - ./media:/app/media
+    depends_on:
+      - redis
+
+  redis:
+    image: redis:7-alpine
+    container_name: wa-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+volumes:
+  redis_data:
