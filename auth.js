@@ -1,30 +1,21 @@
-import { redis } from './db.js'
+// auth.js
+export const redisAuth = (req, res, next) => {
+    const apiKey = (req.headers['x-api-key'] || '').trim()
+    const expectedKey = (process.env.API_KEY || '').trim()
 
-export function redisAuth(sessionId) {
-  const authKey = `wa:${sessionId}:creds`
-  const keysKey = `wa:${sessionId}:keys`
-  return {
-    async readCredentials() {
-      const raw = await redis.get(authKey)
-      return raw ? JSON.parse(raw) : undefined
-    },
-    async writeCredentials(creds) {
-      await redis.set(authKey, JSON.stringify(creds))
-    },
-    keys: {
-      async get(type, ids) {
-        const data = JSON.parse((await redis.get(keysKey)) || '{}')
-        const result = {}
-        for (const id of ids) result[id] = data?.[type]?.[id]
-        return result
-      },
-      async set(data) {
-        const prev = JSON.parse((await redis.get(keysKey)) || '{}')
-        for (const category in data) {
-          prev[category] = { ...(prev[category] || {}), ...data[category] }
-        }
-        await redis.set(keysKey, JSON.stringify(prev))
-      }
+    // Debug logs (check Render logs after redeploy)
+    console.log("🔑 API key from request:", apiKey)
+    console.log("🔑 API key from env:", expectedKey)
+
+    if (!expectedKey) {
+        console.error("❌ No API_KEY found in environment variables")
+        return res.status(500).json({ error: 'Server misconfigured: missing API_KEY' })
     }
-  }
+
+    if (apiKey !== expectedKey) {
+        console.warn("❌ Invalid API key attempt")
+        return res.status(401).json({ error: 'Invalid API key' })
+    }
+
+    next()
 }
