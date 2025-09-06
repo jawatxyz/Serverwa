@@ -1,9 +1,11 @@
-// auth.js
+/// auth.js
 export const redisAuth = (req, res, next) => {
+    // 🔍 Log all incoming headers
+    console.log("🔍 Incoming headers:", req.headers)
+
     const apiKey = (req.headers['x-api-key'] || '').trim()
     const expectedKey = (process.env.API_KEY || '').trim()
 
-    // Debug logs (check Render logs after redeploy)
     console.log("🔑 API key from request:", apiKey)
     console.log("🔑 API key from env:", expectedKey)
 
