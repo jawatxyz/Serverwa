@@ -2,42 +2,45 @@
 import makeWASocket from '@whiskeysockets/baileys';
 import { redisAuth } from './auth.js';
 
+// Map to store all active sessions
+export const sessions = new Map(); // key = sessionId, value = socket
+
 /**
- * Initialize or load a Baileys session from Redis
+ * Get existing socket or initialize a new one
  * @param {string} sessionId Unique session identifier
  */
-export async function initSession(sessionId) {
+export async function getSocket(sessionId) {
+  if (sessions.has(sessionId)) return sessions.get(sessionId);
+
   const { readCredentials, writeCredentials, keys } = redisAuth(sessionId);
 
-  // Load stored credentials
+  // Load credentials from Redis or initialize empty for first-time
   let creds = await readCredentials();
-
-  // First-time login: initialize empty creds object
   if (!creds) {
     creds = { me: undefined };
     await writeCredentials(creds);
   }
 
-  // Create the WhatsApp socket
+  // Create Baileys socket (QR-less)
   const sock = makeWASocket({
-    printQRInTerminal: true, // optional, shows QR in terminal for first login
-    auth: { creds, keys },   // pass creds + optional keys store
+    printQRInTerminal: false, // No QR
+    auth: { creds, keys },
   });
 
-  // Listen for credential updates and save them to Redis
+  // Save updates to Redis
   sock.ev.on('creds.update', async (updatedCreds) => {
     try {
       await writeCredentials(updatedCreds);
-      console.log(`[${sessionId}] creds updated and saved to Redis`);
+      console.log(`[${sessionId}] creds updated`);
     } catch (err) {
-      console.error(`[${sessionId}] error saving creds:`, err);
+      console.error(`[${sessionId}] error saving creds`, err);
     }
   });
 
-  // Optional: listen to connection state
   sock.ev.on('connection.update', (update) => {
-    console.log(`[${sessionId}] connection update:`, update);
+    console.log(`[${sessionId}] connection update`, update);
   });
 
+  sessions.set(sessionId, sock);
   return sock;
 }
