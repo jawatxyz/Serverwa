@@ -1,26 +1,24 @@
 // routes.js
 import express from 'express';
-import { getSocket, sessions } from './sessionManager.js';
+import { getSocket } from './sessionManager.js';
 import { redis } from './db.js';
 import crypto from 'crypto';
 
 const router = express.Router();
 
 /**
- * Generate a new pairing code
+ * Generate pairing code for client device
  */
 router.post('/pair/generate', async (req, res) => {
   const sessionId = req.body.sessionId || crypto.randomUUID();
   const pairCode = crypto.randomBytes(3).toString('hex'); // 6-digit hex
 
-  // Store pairing code in Redis, expires in 5 min
-  await redis.set(`pair:${pairCode}`, sessionId, 'EX', 300);
-
+  await redis.set(`pair:${pairCode}`, sessionId, 'EX', 300); // expires 5 mins
   res.json({ sessionId, pairCode });
 });
 
 /**
- * Use a pairing code to start a session
+ * Use pairing code in WhatsApp main account linking
  */
 router.post('/pair/use', async (req, res) => {
   const { pairCode } = req.body;
@@ -29,7 +27,7 @@ router.post('/pair/use', async (req, res) => {
   if (!sessionId) return res.status(400).json({ error: 'Invalid or expired pairing code' });
 
   try {
-    await getSocket(sessionId);
+    await getSocket(sessionId); // initialize socket / detect pairing
     res.json({ message: `Session ${sessionId} paired successfully` });
   } catch (err) {
     console.error(err);
