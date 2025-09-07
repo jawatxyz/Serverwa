@@ -2,43 +2,51 @@
 import makeWASocket from '@whiskeysockets/baileys';
 import { redisAuth } from './auth.js';
 
-// Map to store all active sessions
 export const sessions = new Map(); // key = sessionId, value = socket
 
 /**
  * Get existing socket or initialize a new one
- * @param {string} sessionId Unique session identifier
  */
 export async function getSocket(sessionId) {
   if (sessions.has(sessionId)) return sessions.get(sessionId);
 
   const { readCredentials, writeCredentials, keys } = redisAuth(sessionId);
 
-  // Load credentials from Redis or initialize empty for first-time
+  // Load credentials or initialize empty
   let creds = await readCredentials();
   if (!creds) {
     creds = { me: undefined };
     await writeCredentials(creds);
   }
 
-  // Create Baileys socket (QR-less)
   const sock = makeWASocket({
-    printQRInTerminal: false, // No QR
+    printQRInTerminal: false, // QR not needed
     auth: { creds, keys },
   });
 
-  // Save updates to Redis
-  sock.ev.on('creds.update', async (updatedCreds) => {
-    try {
-      await writeCredentials(updatedCreds);
-      console.log(`[${sessionId}] creds updated`);
-    } catch (err) {
-      console.error(`[${sessionId}] error saving creds`, err);
+  // Detect pairing code connection updates
+  sock.ev.on('connection.update', (update) => {
+    const { connection, lastDisconnect, qr } = update;
+
+    // Log pairing info
+    if (qr) {
+      console.log(`[${sessionId}] Received QR/pairing info:`, qr);
+      // Optional: forward QR/pairing code to frontend if needed
+    }
+
+    if (connection === 'open') {
+      console.log(`[${sessionId}] Connected successfully via pairing code!`);
+    }
+
+    if (connection === 'close' && lastDisconnect?.error) {
+      console.error(`[${sessionId}] Disconnected:`, lastDisconnect.error);
     }
   });
 
-  sock.ev.on('connection.update', (update) => {
-    console.log(`[${sessionId}] connection update`, update);
+  // Save credentials to Redis whenever updated
+  sock.ev.on('creds.update', async (updatedCreds) => {
+    await writeCredentials(updatedCreds);
+    console.log(`[${sessionId}] creds updated`);
   });
 
   sessions.set(sessionId, sock);
