@@ -1,59 +1,41 @@
-// sessionManager.js
-import makeWASocket, { Browsers } from '@whiskeysockets/baileys';
-import { redisAuth } from './auth.js';
+import makeWASocket, { useMultiFileAuthState } from "@whiskeysockets/baileys"
 
-export const sessions = new Map(); // key = sessionId, value = socket
+const sessions = {} // store sockets in memory
 
-/**
- * Get existing socket or initialize a new one
- * @param {string} sessionId Unique session identifier
- * @param {string} phoneNumber Phone number of the WhatsApp account
- */
-export async function getSocket(sessionId, phoneNumber) {
-  if (sessions.has(sessionId)) return sessions.get(sessionId);
+// Start a new WhatsApp session (with pairing code)
+export async function startSession(phoneNumber) {
+  if (!phoneNumber) throw new Error("Phone number is required")
 
-  const { readCredentials, writeCredentials, keys } = redisAuth(sessionId);
-
-  // Load credentials from Redis or initialize empty
-  let creds = await readCredentials();
-  if (!creds) {
-    creds = { me: undefined };
-    await writeCredentials(creds);
-  }
+  // useMultiFileAuthState saves creds in sessions/<phoneNumber>
+  const { state, saveCreds } = await useMultiFileAuthState(`sessions/${phoneNumber}`)
 
   const sock = makeWASocket({
-    printQRInTerminal: false, // NEVER show QR
-    auth: { creds, keys },
-    browser: Browsers.macOS('Desktop'),
-  });
+    auth: state,
+    printQRInTerminal: false, // we don’t want QR
+    browser: ["Serverwa", "Chrome", "1.0.0"]
+  })
 
-  // Request pairing code from WhatsApp for this account
-  try {
-    const { ref, ttl } = await sock.generatePairingCode(phoneNumber); 
-    console.log(`[${sessionId}] Pairing code generated for ${phoneNumber}: ${ref}, expires in ${ttl} sec`);
-    // Send `ref` to frontend; user enters this in WhatsApp main account
-  } catch (error) {
-    console.error(`[${sessionId}] Error requesting pairing code:`, error);
+  // request a pairing code if not registered
+  if (!sock.authState.creds.registered) {
+    const code = await sock.requestPairingCode(phoneNumber)
+    console.log(`Pairing code for ${phoneNumber}:`, code)
+    return { status: "pending", pairingCode: code }
   }
 
-  // Detect when device is successfully linked
-  sock.ev.on('connection.update', (update) => {
-    const { connection, lastDisconnect } = update;
+  sock.ev.on("creds.update", saveCreds)
 
-    if (connection === 'open') {
-      console.log(`[${sessionId}] Successfully paired with WhatsApp main account!`);
-    }
-    if (connection === 'close' && lastDisconnect?.error) {
-      console.error(`[${sessionId}] Disconnected:`, lastDisconnect.error);
-    }
-  });
+  sessions[phoneNumber] = sock
+  console.log(`✅ WhatsApp session started for ${phoneNumber}`)
 
-  // Save credentials to Redis whenever updated
-  sock.ev.on('creds.update', async (updatedCreds) => {
-    await writeCredentials(updatedCreds);
-    console.log(`[${sessionId}] creds updated`);
-  });
+  return { status: "connected" }
+}
 
-  sessions.set(sessionId, sock);
-  return sock;
+// Get an existing socket
+export function getSocket(phoneNumber) {
+  return sessions[phoneNumber]
+}
+
+// List all active sessions
+export function listSessions() {
+  return Object.keys(sessions)
 }
