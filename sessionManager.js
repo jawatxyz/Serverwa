@@ -2,40 +2,55 @@ import makeWASocket, { useMultiFileAuthState } from "@whiskeysockets/baileys"
 
 const sessions = {} // store sockets in memory
 
-// Start a new WhatsApp session (with pairing code)
 export async function startSession(phoneNumber) {
   if (!phoneNumber) throw new Error("Phone number is required")
 
-  // useMultiFileAuthState saves creds in sessions/<phoneNumber>
+  console.log(`[SessionManager] Starting session for ${phoneNumber}`)
+
   const { state, saveCreds } = await useMultiFileAuthState(`sessions/${phoneNumber}`)
 
   const sock = makeWASocket({
     auth: state,
-    printQRInTerminal: false, // we don’t want QR
+    printQRInTerminal: false,
     browser: ["Serverwa", "Chrome", "1.0.0"]
   })
 
-  // request a pairing code if not registered
-  if (!sock.authState.creds.registered) {
-    const code = await sock.requestPairingCode(phoneNumber)
-    console.log(`Pairing code for ${phoneNumber}:`, code)
-    return { status: "pending", pairingCode: code }
-  }
+  // log connection updates
+  sock.ev.on("connection.update", (update) => {
+    console.log(`[Baileys][${phoneNumber}] Connection update:`, update)
+  })
 
   sock.ev.on("creds.update", saveCreds)
 
-  sessions[phoneNumber] = sock
-  console.log(`✅ WhatsApp session started for ${phoneNumber}`)
+  try {
+    if (!sock.authState.creds.registered) {
+      console.log(`[Baileys][${phoneNumber}] Requesting pairing code...`)
 
-  return { status: "connected" }
+      const code = await Promise.race([
+        sock.requestPairingCode(phoneNumber),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Timeout requesting pairing code")), 15000)
+        )
+      ])
+
+      console.log(`[Baileys][${phoneNumber}] Pairing code received: ${code}`)
+      return { status: "pending", pairingCode: code }
+    }
+
+    sessions[phoneNumber] = sock
+    console.log(`[Baileys][${phoneNumber}] Session restored and connected ✅`)
+
+    return { status: "connected" }
+  } catch (err) {
+    console.error(`[Baileys][${phoneNumber}] Failed to start session:`, err)
+    return { status: "error", message: err.message }
+  }
 }
 
-// Get an existing socket
 export function getSocket(phoneNumber) {
   return sessions[phoneNumber]
 }
 
-// List all active sessions
 export function listSessions() {
   return Object.keys(sessions)
 }
